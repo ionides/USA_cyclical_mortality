@@ -87,7 +87,7 @@ stars<-function(x,nsmall=2,digits=NULL,add.minus.space=TRUE,xxx=TRUE){
  val <- format(x[1],nsmall=nsmall,digits=digits)
  pval=x[2]
  if (pval=="NULL") "" else{  # note: #42 is the html number for asterisk
-  if(pval<0.001 & xxx) paste(val,"&#42;&#42;",sep="") else {
+  if(pval<0.001 & xxx) paste(val,"&#42;&#42;&#42;",sep="") else {
    if(pval<0.01) paste(val,"&#42;&#42;",sep="") else {
     if(pval<0.05) paste(val,"&#42;",sep="") else {
      if(pval<0.1) paste(val, "&dagger;",sep="") 
