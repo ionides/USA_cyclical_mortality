@@ -1,0 +1,452 @@
+---
+title: "An association between unemployment and mortality?"
+author: "Edward L. Ionides and Jos&eacute; A. Tapia Granados"
+date: "3/1/2016"
+output:
+  html_document:
+    fig_caption: true
+    theme: flatly
+    toc: yes
+    toc_depth: 3
+    number_sections: false
+bibliography: report.bib
+csl: ecology.csl
+---
+
+
+\newcommand\prob{\mathbb{P}} 
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\data[1]{#1^*}
+\newcommand\params{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\eqspace{\quad\quad}
+\newcommand\myeq[1]{\eqspace \displaystyle #1}
+\newcommand\lik{\mathscr{L}}
+\newcommand\loglik{\ell}
+\newcommand\given{{\, | \,}}
+
+
+
+Licensed under the Creative Commons attribution-noncommercial license, http://creativecommons.org/licenses/by-nc/3.0/.
+Please share and remix noncommercially, mentioning its origin.  
+![CC-BY_NC](cc-by-nc.png)
+
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+library(pomp)
+library(knitr)
+prefix <- "intro"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  cache_extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+
+set.seed(2050320976)
+```
+```{r opts,include=FALSE,cache=FALSE}
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+```
+
+-------------------
+
+------------------
+
+<big><big><big>Objectives</big></big></big>
+
+* We carry out a time series analysis of national-level USA data to see if there is association between fluctuations in economic growth and unemployment.
+
+* This document is written in [R markdown](http://rmarkdown.rstudio.com/). You can compile the document to run the code using [R Studio](http://rstudio.com) or the rmarkdown package for [R](https://www.r-project.org/). You can edit the document and its source code from the [Github repository](https://github.com/ionides/USA_cyclical_mortality). Let us know if you have something to contribute. 
+
+<br>
+
+----------------------
+
+---------------
+
+## Historical investigations linking business cycles to mortality
+
+* @ogburn22 were among the first to report **pro-cyclical** mortality. This is a phenomenon when mortality tends to be above trend during periods when economic activity is above trend. Procyclical mortality, if it is present, indicates that one key measure of population health is worse in economic booms than in economic recessions.
+
+* No one disputes that both the economy and life expectancy have grown over the last century. However, these phenomena have not always come together. For example, 1950--1980 saw rapid growth in life expectancy in India and China, periods of relatively slow economic growth for these countries. The rate of improvement in life expectancies has tapered off during the recent economic surges in India and China.
+
+* The link between economic growth and health improvement is controversial, since it has political implications. 
+
+    + If our goal is population health and happiness, how much should our policies focus on gross domestic product (GDP) growth? 
+
+    + If you have evidence supporting the view that economic growth is the critical engine for other improvements in living conditions, the answer is: a lot. 
+
+    + If you have evidence that there are other major factors involved, GDP growth becomes only one consideration, and not necessary always a top political priority.
+
+* Economists and epidemiologists have argued both sides of this debate, using time series methods.
+
+<br>
+
+-------
+
+--------
+
+## Some data and a fitted model
+
+* We're going to look at national historical mortality data for the USA, downloaded from [The Human Mortality Database](http://www.mortality.org/)
+
+```{r read_data_e}
+e_data <- read.table(file="life_expectancy_usa.txt",header=TRUE)
+head(e_data)
+```
+
+* The variable `e0` here is civilian life expectancy at birth. This is an actuarial calculation based on a fictitious individual having mortality rates at each age matching the census age-specific mortality rates for the current year. It is a standard way to combine all the age-specific mortality rates into a single number.
+
+* One can also break down life expectancy by gender, race, geography, etc. In our data, `e0F` and `e0M` are female and male life expectancy at birth. It is interesting and relevant to investigate the consistency of any established pattern across sub-populations, but here we'll focus on a single, national analysis, combining both genders.
+
+** To measure fluctuations in economic growth, we use monthly national USA unemployment figures](http://data.bls.gov/timeseries/LNU04000000) published by the Bureau of Labor Statistics. 
+
+```{r read_data_u}
+u_data <- read.table(file="unadjusted_unemployment.csv",sep=",",header=TRUE)
+head(u_data)
+```
+
+* Write $\data{e_n}$ for life expectancy in year $t_n=1947+n$. 
+
+* Write $\data{u_n}$ for mean unemployment in year $t_n$.
+
+* These variables are coded as follows.
+
+```{r clean_data}
+t <- intersect(e_data$Yr,u_data$Year)
+e <- e_data$e0[e_data$Yr %in% t]
+u <- apply(u_data[u_data$Year %in% t, 2:13],1,mean)
+```
+
+* We can get some feeling for the data by plotting them. 
+
+```{r data_plots,fig.height=5}
+plot(ts(cbind(e,u),start=1948),main="Percent unemployment (u) and life expectancy (e) for USA",xlab="Year")
+```
+
+* We are interested in changes over business cycle timescales, once trends have been removed. 
+
+* To extract the cyclical component, we use an econometric method called the [Hodrick-Prescott filter](https://en.wikipedia.org/wiki/Hodrick%E2%80%93Prescott_filter) \citep{hodrick97}.
+
+* Specifically, for a time series $\data{y_{1:N}}$, the Hodrick-Prescott (HP) filter is the time series $\data{s_{1:N}}$ constructed as
+
+$$\data{s_{1:N}} =  \arg\min_{s_{1:N}} 
+  \left\{ 
+    \sum^{N}_{n=1}\big(\data{y_n}-s_{n}\big)^2 + \lambda\sum^{N-1}_{n=2}\big(s_{n+1}-2s_{n}+s_{n-1}\big)^2 
+  \right\}.$$
+
+* A standard econometric choice of $\lambda$ for removing nonlinear trend, and therefore extracting the business cycle component, in annual data is $\lambda=100$.
+
+* An R implementation of the Hodrick-Prescott filter is `hpfilter` in the R package `mFilter`.
+
+* We use this to define the HP-detrended life expectancy, $e^{HP*}_{1:N}$, and unemployment, $u^{HP*}_{1:N}$.
+ 
+```{r hp}
+require(mFilter)
+e_hp <- hpfilter(e, freq=100,type="lambda",drift=F)$cycle
+u_hp <- hpfilter(u, freq=100,type="lambda",drift=F)$cycle
+```
+
+```{r hpplots, fig.cap="Figure 2. Detrended unemployment (black; left axis) and detrended life expectancy at birth (red; right axis)."}
+plot(t,u_hp,type="l",xlab="Year",ylab="")
+par(new=TRUE)
+plot(t,e_hp,col="red",type="l",axes=FALSE,xlab="",ylab="")
+axis(side=4, col="red")
+```
+
+* Looking at this figure may suggest that detrended life expectancy and detrended unemployment cycle together. 
+
+* We want to make a test to check that.
+
+* For example, we can analyze $e^{HP*}_{1:N}$ using a regression with ARMA errors model,
+
+<br>
+
+[M1] $\myeq E^{HP}_n = \alpha + \beta u^{HP*}_n + \epsilon_n$,
+
+<br>
+
+where $\{\epsilon_n\}$ is a Gaussian ARMA process. 
+We use an ARMA(1,0) model, as discussed in the supplementary analysis.
+
+```{r hp_b}
+arima(e_hp,xreg=u_hp,order=c(1,0,0))
+```
+
+* The standard errors, computed from the observed Fisher information approximation, suggest a statistically significant association between cyclical variation in unemployment and mortality.
+
+* To carry out a formal hypothesis test, let's start by formally writing the hypothese under investigation.
+
+<br>
+ 
+$H_0$: There is no association. We suppose model [M1] applies with $\beta=0$.
+
+<br>
+
+$H_1$: Some association is present. Model [M1] applies with $\beta\neq 0$.
+
+<br> 
+
+We can also compute the ratio of the likelihoods, maximized under $H_1$ and $H_0$, to construct the likelihood ratio statistic. Under the null hypothesis, $H_0$, this statistic has a [chi-squared approximation](https://en.wikipedia.org/wiki/Likelihood-ratio_test#Definition_.28likelihood_ratio_test_for_composite_hypotheses.29).
+
+```{r lrt}
+log_lik_ratio <- as.numeric(
+   logLik(arima(e_hp,xreg=u_hp,order=c(1,0,0))) -
+   logLik(arima(e_hp,order=c(1,0,0)))
+)
+LRT_pval <- 1-pchisq(2*log_lik_ratio,df=1)
+```
+
+* This chi-squared approximation gives a p-value of $`r round(LRT_pval,5)`$.
+
+* We may also notice from the plot that the relationship seems clearer before the mid 1990s, say in the first 45 years of the time series.
+
+```{r hp_early_fit}
+tt <- 1:45
+arima(e_hp[tt],xreg=u_hp[tt],order=c(1,0,0))
+```
+
+* There is some suggestion that the association is stronger in the time period 1948--1992, but the difference is not large compared to the standard error on the coefficient.
+
+<br>
+
+-------
+
+--------
+
+## Conclusions
+
+* There is clear evidence of pro-cyclical mortality at a national level in the USA from 1948 to 2013.
+
+* For example, the *Great Recession* led to high unemployment in 2009-2010, but these two years had above-trend values of life expectancy at birth.
+
+* More data, such as a state-level panel analysis combining many time series [@ionides13-aoas], can improve the signal to noise ratio and lead to clearer results.
+This extra statistical precision allows us to analyze sub-populations and causes of mortality more accurately than can be done with just one national-level dataset. 
+
+* We have been careful to talk about **association**, since observational data giving firm statistical evidence of an assocation between $X$ and $Y$ cannot readily distinguish between three possibilities: 
+
+    1. $X$ causes $Y$.
+
+    2. $Y$ causes $X$.
+
+    3. Both $X$ and $Y$ are caused by a third variable $Z$ that is unmeasured or has been omitted from the analysis. In this case, $Z$ is called a confounding variable.
+
+* Here, it is not considered plausible that mortality fluctations drive economic fluctuations (the reverse causation possibility).
+
+* We think of unemployment as a proxy variable for economic fluctuations. We do not claim that increased unemployment itself is necessarily directly causing reduced mortality. Any other omitted variable that fluctuates with levels of economic activity should show similar associations.
+
+* A more problematic potential confounding variable is lagged economic activity. 
+One could potentially find a pattern where the reduction in mortality for the current economic down-turn is actually caused by the previous economic boom.
+
+* It is hard to entirely dismiss this possibility. However, the association we have found is clearest with no time lag, and (as we have seen previously) economic fluctuations between periods of boom and bust have historically had quite variable duration. A stable lagged relationship between economic activity and life expectancy has not yet been discovered.
+
+* We have found empirical evidence to support a claim that above-trend economic growth CAUSES above-trend mortality.
+
+<br>
+
+-------
+
+-------
+
+## Some supplementary analysis
+
+### Model selection by Akaike's information criterion (AIC)
+
+```{r aic_table}
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+e_aic_table <- aic_table(e_hp,4,5,xreg=u_hp)
+require(knitr)
+kable(e_aic_table,digits=2)
+```
+
+* This suggests that the model with ARMA(1,0) errors is the best small model. 
+
+* There are some larger models with impressive AIC values. For example, let's look at the fitted model with ARMA(3,1) errors.
+
+```{r arma31}
+arima(e_hp,xreg=u_hp,order=c(3,0,1))
+```
+
+* We have a non-invertible solution, with a regression coefficient for $U_{1:N}$ that is apparently statistically significant (according to the Fisher information standard errors).
+
+* Probably, the ARMA(3,1) analysis is not very stable, meaning that we might not expect to find a similar fit for similar data. 
+
+* We can find inconsistencies in the AIC table. For nested models, adding a parameter cannot decrease the maximized likelihood. Therefore, mathematically, adding a parameter cannot increase the AIC by more than two units. This evidence for numerical problems in evaluating and/or maximizing the ARMA likelihood is common. It suggests one should be cautious about using AIC to choose relatively large models.
+
+<br>
+
+--------
+
+-------
+
+### Residual analysis
+
+* We should check the residuals for the fitted model, and look at their sample autocorrelation.
+
+```{r resid}
+r <- resid(arima(e_hp,xreg=u_hp,order=c(1,0,0)))
+plot(r)
+```
+
+* There is some evidence for fluctuations decreasing in amplitude over time. This is an example of **heteroskedasticity**. It is not extreme here, but could be studied in a future analysis.
+
+```{r acf}
+acf(r)
+```
+
+* It is not disasterous to have one out of 18 lags narrowly outside the dashed lines showing pointwise acceptance regions at the 5% level under a null hypothesis of Gaussian white noise.
+
+* The presence of some small amount of sample autocorrelation is consistent with the AIC table, which finds the possibility of small gains by fitting some larger models to the regression errors.
+
+<br>
+
+------
+
+------
+
+### Analysis of temporal differences
+
+* One might model annual changes in life expectancy, rather than difference from a trend. In this case, we consider the variable 
+$$ \Delta \data{e_n} = \data{e_n} - \data{e_{n-1}}.$$
+
+* We compute this as
+
+```{r clean_data_again}
+delta_e <- e - e_data$e0[e_data$Yr %in% (t-1)]
+```
+
+```{r plots, fig.cap="unemployment (black; left axis) and differenced life expectancy (red; right axis)."}
+plot(t,u,type="l",xlab="Year",ylab="")
+par(new=TRUE)
+plot(t,delta_e,col="red",type="l",axes=FALSE,xlab="",ylab="")
+axis(side=4,col="red")
+```
+
+* The relationship between unemployment and differenced life expectancy is harder to see than when HP-detrended.
+
+* The relationship is also harder to find by statistical methods. For example,
+
+```{r arma}
+arima(delta_e,xreg=u,order=c(1,0,1))
+```
+
+* Here, we do not see statistically convincing evidence for the relationship.
+
+* A scientific principle for interpreting experimental results is as follows: An experiment which finds evidence of an effect is usually a better foundation for future investigations than one which fails to find evidence. The experiment which found no evidence of an effect might have been a bad choice of experiment, or might have been carried out poorly. 
+
+* The principle of giving preference to methods giving positive results must be balanced with consideration of multiple testing. There is a danger in trying many analyses and settling on the first that claims statistical significance. The generalizability of any result is tentative until confirmed in other studies. 
+
+* It appears that temporal differencing has destroyed too much of the evidence we were hoping it would clarify.
+
+<br>
+
+-------------------
+
+------------------
+
+### Exploratory analysis using correlations and linear detrending
+
+* A simple analysis is to remove a linear trend from both the life expectancy and unemployment time series, and compute the correlation coefficient. The correlation coefficient provides a widely used numerical summary of an association. The familiarity and simplicity of the correlation coefficient is convenient for comparing results across a range of time periods and population subgroups.
+
+* Since the detrended series have non-negligible autocorrelation, the standard p-value associated with the correlation coefficient is unreliable as a formal test. Nevertheless, it provides a simple measure to help us see patterns in a table such as the following. The source code for this table is not included in this document, but you can see it in the source file ([report.Rmd](report.Rmd)) or in the extracted R code file ([report.R](report.R)).
+
+```{r corr_table,echo=FALSE}
+stars<-function(x,nsmall=2,digits=NULL,add.minus.space=TRUE,xxx=TRUE){
+ val <- format(x[1],nsmall=nsmall,digits=digits)
+ pval=x[2]
+ if (pval=="NULL") "" else{  # note: #42 is the html number for asterisk
+  if(pval<0.001 & xxx) paste(val,"&#42;&#42;",sep="") else {
+   if(pval<0.01) paste(val,"&#42;&#42;",sep="") else {
+    if(pval<0.05) paste(val,"&#42;",sep="") else {
+     if(pval<0.1) paste(val, "&dagger;",sep="") 
+       else as.character(val)
+     }
+   }
+  }
+ }
+}
+time_periods <- list(
+ "1948-2013"=1948:2013,
+ "1948-1959"=1948:1959,
+ "1950-1969"=1950:1969,
+ "1960-1979"=1960:1979,
+ "1970-1989"=1970:1989,
+ "1980-1999"=1980:1999,
+ "1990-2009"=1990:2009,
+ "2000-2013"=2000:2013
+)
+e_list <- list(
+  e = e,
+  e_m = e_data$e0M[e_data$Yr %in% t],
+  e_f <- e_data$e0F[e_data$Yr %in% t]
+)
+e_list_detrended <- lapply(e_list,function(e_category)lm(e_category~t)$resid)
+cor_periods_calc <- function(e_category){
+  sapply(time_periods,function(period){
+    e_subset <- e_category[t%in%period]
+    u_subset <- u[t%in%period]
+# We detrend before subsetting the time periods. Uncomment this to detrend afterwards 
+#    e_subset <- lm(e_subset~period)$resid 
+#    u_subset <- lm(u_subset~period)$resid
+    cor_eu <- cor(e_subset,u_subset)
+    pval_eu <- cor.test(e_subset,u_subset)$p.value
+    c(cor_eu,pval_eu)
+    }
+  )
+}
+cor_periods <- lapply(e_list_detrended,cor_periods_calc)
+cor_table <- sapply(cor_periods,function(x)apply(x,2,stars,digits=2))
+colnames(cor_table)<-c("National","Male","Female")
+#require(knitr)
+#kable(cor_table)
+require(htmlTable)
+htmlTable(cor_table,
+  align="llll",
+  align.header="lll",
+  css.cell = "padding-left: .5em; padding-right: .2em;",
+  caption = "Correlation between linearly detrended USA national unemployment and life expectancy at birth for different time periods and populations.",
+  tfoot = "&#42;P<0.05, &#42;&#42;P<0.01, &#42;&#42;&#42;P<0.001, &dagger;P<0.1, using the usual t-test that ignores autocorrelation."
+)
+```
+
+
+
+<br>
+
+-------
+
+-------
+
+## References
