@@ -101,7 +101,7 @@ options(
 
     + If you have evidence that there are other major factors involved, GDP growth becomes only one consideration, and not necessary always a top political priority.
 
-* Economists and epidemiologists have argued both sides of this debate, using time series methods.
+* Researchers from various disciplines, including economics, epidemiology and sociology, have used time series analysis to argue both sides of this debate.
 
 <br>
 
@@ -326,7 +326,7 @@ plot(r)
 acf(r)
 ```
 
-* It is not disasterous to have one out of 18 lags narrowly outside the dashed lines showing pointwise acceptance regions at the 5% level under a null hypothesis of Gaussian white noise.
+* It is not disastrous to have one out of 18 lags narrowly outside the dashed lines showing pointwise acceptance regions at the 5% level under a null hypothesis of Gaussian white noise.
 
 * The presence of some small amount of sample autocorrelation is consistent with the AIC table, which finds the possibility of small gains by fitting some larger models to the regression errors.
 
