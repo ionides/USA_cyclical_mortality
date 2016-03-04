@@ -77,7 +77,7 @@ options(
 
 <big><big><big>Objectives</big></big></big>
 
-* We carry out a time series analysis of national-level USA data to see if there is association between fluctuations in economic growth and unemployment.
+* We carry out a time series analysis of national-level USA data to see if there is association between fluctuations in macroeconomic conditions (measured by the unemployment rate) and mortality rates (measured by life expectancy at birth).
 
 * This document is written in [R markdown](http://rmarkdown.rstudio.com/). You can compile the document to run the code using [R Studio](http://rstudio.com) or the rmarkdown package for [R](https://www.r-project.org/). You can edit the document and its source code from the [Github repository](https://github.com/ionides/USA_cyclical_mortality). Let us know if you have something to contribute. 
 
